@@ -1,0 +1,1 @@
+this file is used by the rename substitution test
