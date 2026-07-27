@@ -19,6 +19,9 @@ on:
 permissions:
   contents: read
 
+engine:
+  id: codex
+
 safe-outputs:
   create-pull-request:
     max: 1
