@@ -1,0 +1,76 @@
+name: Path A write-owning binding probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Binding probe mode
+        required: true
+        default: clean
+        type: choice
+        options:
+          - clean
+          - readback-divergence
+
+permissions:
+  contents: write
+
+concurrency:
+  group: path-a-binding-probe
+  cancel-in-progress: false
+
+jobs:
+  write-owning-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact triggering revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Prepare the proposed tree and attested bundle
+        id: prepare
+        shell: bash
+        env:
+          PROBE_BRANCH: path-a-probe/${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          base_commit="$(git rev-parse HEAD)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$PROBE_BRANCH"
+          printf 'path-a run %s attempt %s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> probe-target.txt
+          git add -- probe-target.txt
+          git commit -m "Path A binding probe ${GITHUB_RUN_ID}"
+          git bundle create "$RUNNER_TEMP/attested.bundle" "$PROBE_BRANCH"
+          {
+            echo "base_commit=$base_commit"
+            echo "probe_branch=$PROBE_BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify, write, and independently read back
+        shell: bash
+        env:
+          PROBE_MODE: ${{ inputs.mode }}
+          PROBE_BRANCH: ${{ steps.prepare.outputs.probe_branch }}
+          BASE_COMMIT: ${{ steps.prepare.outputs.base_commit }}
+          REMOTE_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          set +e
+          python .github/probes/path_a_binding_probe.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --bundle "$RUNNER_TEMP/attested.bundle" \
+            --remote-url "$REMOTE_URL" \
+            --remote-branch "$PROBE_BRANCH" \
+            --base-commit "$BASE_COMMIT" \
+            --mode "$PROBE_MODE"
+          status=$?
+          set -e
+
+          if [[ "$PROBE_MODE" == "readback-divergence" && "$status" -eq 42 ]]; then
+            exit 42
+          fi
+          exit "$status"

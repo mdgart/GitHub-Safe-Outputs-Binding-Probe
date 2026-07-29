@@ -31,6 +31,30 @@ Therefore, inspecting the downloaded bundle proves a useful pre-handler hook exi
 
 That distinction is the company-vs-upstream-feature question.
 
+## Path A: write-owning end-to-end probe
+
+`.github/workflows/path-a-binding-probe.yml` is a conventional, permission-
+controlled Actions workflow that owns the GitHub write. Run it manually with
+either `clean` or `readback-divergence`.
+
+It logs three independently computed complete-tree identities:
+
+- `ATTESTED_IDENTITY`, imported from the proposed-tree git bundle
+- `PREWRITE_IDENTITY`, recomputed from the writer's checked-out tree
+- `REMOTE_IDENTITY`, recomputed after fetching the pushed branch into a fresh
+  repository
+
+Clean mode succeeds only when all three match. Readback-divergence mode commits
+a deliberate tree mutation after pre-write verification and before push, then
+fails with exit code 42 after positively observing:
+
+```text
+BINDING_FAILURE_REASON=REMOTE_IDENTITY_MISMATCH_EXPECTED
+```
+
+Authentication, git, push, and fetch failures use operational-failure messages
+and can never produce that security-test result.
+
 ## Files
 
 ```text
@@ -38,8 +62,10 @@ That distinction is the company-vs-upstream-feature question.
   probes/
     git_tree_identity.py
     safe_outputs_probe.py
+    path_a_binding_probe.py
   workflows/
     binding-portability-probe.md
+    path-a-binding-probe.yml
 probe/
   git_tree_identity.py
   mutate_bundle.py
